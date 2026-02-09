@@ -1,7 +1,7 @@
 {
   "id": "pandas_semantic_layer",
   "name": "Pandas Semantic Layer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "All Rights Reserved",
   "frontend": {
     "contributions": {
