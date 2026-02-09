@@ -15,7 +15,7 @@
   },
   "backend": {
     "entryPoints": ["pandas_semantic_layer.entrypoint"],
-    "files": ["backend/src/pandas/**/*.py"]
+    "files": ["backend/src/pandas_semantic_layer/**/*.py"]
   },
   "permissions": []
 }
