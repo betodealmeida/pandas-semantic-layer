@@ -1,0 +1,4 @@
+[project]
+name = "pandas_semantic_layer"
+version = "0.1.0"
+license = { text="All Rights Reserved" }

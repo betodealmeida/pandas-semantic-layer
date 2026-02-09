@@ -1,0 +1,21 @@
+{
+  "id": "pandas_semantic_layer",
+  "name": "Pandas Semantic Layer",
+  "version": "0.1.0",
+  "license": "All Rights Reserved",
+  "frontend": {
+    "contributions": {
+      "commands": [],
+      "views": {},
+      "menus": {}
+    },
+    "moduleFederation": {
+      "exposes": ["./index"]
+    }
+  },
+  "backend": {
+    "entryPoints": ["pandas_semantic_layer.entrypoint"],
+    "files": ["backend/src/pandas/**/*.py"]
+  },
+  "permissions": []
+}
