@@ -6,7 +6,6 @@ from superset_core.semantic_layers.semantic_view import (
     SemanticViewFeature,
 )
 from superset_core.semantic_layers.types import (
-    AdhocFilter,
     DATE,
     DECIMAL,
     Dimension,
@@ -14,6 +13,7 @@ from superset_core.semantic_layers.types import (
     GroupLimit,
     INTEGER,
     Metric,
+    Operator,
     OrderDirection,
     OrderTuple,
     PredicateType,
@@ -90,13 +90,13 @@ class PandasSemanticView(SemanticView):
     def _apply_filters(
         self,
         df: DataFrame,
-        filters: set[Filter | AdhocFilter] | None,
+        filters: set[Filter] | None,
     ) -> DataFrame:
         if not filters:
             return df
 
         for filter_ in filters:
-            if isinstance(filter_, AdhocFilter):
+            if filter_.operator == Operator.ADHOC:
                 continue
             if filter_.type != PredicateType.WHERE:
                 continue
@@ -133,7 +133,7 @@ class PandasSemanticView(SemanticView):
     def get_values(
         self,
         dimension: Dimension,
-        filters: set[Filter | AdhocFilter] | None = None,
+        filters: set[Filter] | None = None,
     ) -> SemanticResult:
         df = self._apply_filters(self._data.copy(), filters)
         col_name = DIMENSION_COLUMNS[dimension.id]
@@ -148,7 +148,7 @@ class PandasSemanticView(SemanticView):
         self,
         metrics: list[Metric],
         dimensions: list[Dimension],
-        filters: set[Filter | AdhocFilter] | None = None,
+        filters: set[Filter] | None = None,
         order: list[OrderTuple] | None = None,
         limit: int | None = None,
         offset: int | None = None,
@@ -229,7 +229,7 @@ class PandasSemanticView(SemanticView):
         self,
         metrics: list[Metric],
         dimensions: list[Dimension],
-        filters: set[Filter | AdhocFilter] | None = None,
+        filters: set[Filter] | None = None,
         order: list[OrderTuple] | None = None,
         limit: int | None = None,
         offset: int | None = None,
@@ -289,7 +289,7 @@ class PandasSemanticView(SemanticView):
         self,
         metrics: list[Metric],
         dimensions: list[Dimension],
-        filters: set[Filter | AdhocFilter] | None,
+        filters: set[Filter] | None,
         order: list[OrderTuple] | None,
         limit: int | None,
         offset: int | None,
