@@ -2,7 +2,7 @@
   "id": "pandas_semantic_layer",
   "name": "Pandas Semantic Layer",
   "version": "0.1.2",
-  "license": "All Rights Reserved",
+  "license": "Apache-2.0",
   "frontend": {
     "contributions": {
       "commands": [],

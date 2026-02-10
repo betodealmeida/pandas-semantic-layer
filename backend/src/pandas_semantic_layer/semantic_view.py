@@ -218,7 +218,12 @@ class PandasSemanticView(SemanticView):
         result = result.reset_index(drop=True)
 
         description = self._describe_query(
-            metrics, dimensions, filters, order, limit, offset
+            metrics,
+            dimensions,
+            filters,
+            order,
+            limit,
+            offset,
         )
         return SemanticResult(
             requests=[SemanticRequest(REQUEST_TYPE, description)],
