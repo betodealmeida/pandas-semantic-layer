@@ -1,5 +1,6 @@
 {
-  "publisher": "beto",
+  "publisher": "betodealmeida",
+  "id": "betodealmeida.pandas-semantic-layer",
   "name": "pandas-semantic-layer",
   "displayName": "Pandas Semantic Layer",
   "version": "0.1.4",
