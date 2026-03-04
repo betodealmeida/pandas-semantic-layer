@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from pandas import DataFrame
+import pyarrow as pa
+import pyarrow.compute as pc
 from superset_core.semantic_layers.semantic_view import (
     SemanticView,
     SemanticViewFeature,
@@ -40,7 +41,7 @@ class PandasSemanticView(SemanticView):
 
     def __init__(self, name: str):
         self.name = name
-        self._data = SALES_DATA.copy()
+        self._data = SALES_DATA
         self.dimensions = self.get_dimensions()
         self.metrics = self.get_metrics()
 
@@ -89,11 +90,11 @@ class PandasSemanticView(SemanticView):
 
     def _apply_filters(
         self,
-        df: DataFrame,
+        table: pa.Table,
         filters: set[Filter] | None,
-    ) -> DataFrame:
+    ) -> pa.Table:
         if not filters:
-            return df
+            return table
 
         for filter_ in filters:
             if filter_.operator == Operator.ADHOC:
@@ -102,42 +103,48 @@ class PandasSemanticView(SemanticView):
                 continue
 
             col_name = DIMENSION_COLUMNS.get(filter_.column.id, filter_.column.name)
+            column = table.column(col_name)
             op = filter_.operator.value
             value = filter_.value
 
             if op == "IS NULL":
-                df = df[df[col_name].isna()]
+                mask = pc.is_null(column)
             elif op == "IS NOT NULL":
-                df = df[df[col_name].notna()]
+                mask = pc.is_valid(column)
             elif op == "IN":
                 values = list(value) if isinstance(value, (set, frozenset)) else [value]
-                df = df[df[col_name].isin(values)]
+                mask = pc.is_in(column, pa.array(values))
             elif op == "NOT IN":
                 values = list(value) if isinstance(value, (set, frozenset)) else [value]
-                df = df[~df[col_name].isin(values)]
+                mask = pc.invert(pc.is_in(column, pa.array(values)))
             elif op == "=":
-                df = df[df[col_name] == value]
+                mask = pc.equal(column, value)
             elif op == "!=":
-                df = df[df[col_name] != value]
+                mask = pc.not_equal(column, value)
             elif op == ">":
-                df = df[df[col_name] > value]
+                mask = pc.greater(column, value)
             elif op == "<":
-                df = df[df[col_name] < value]
+                mask = pc.less(column, value)
             elif op == ">=":
-                df = df[df[col_name] >= value]
+                mask = pc.greater_equal(column, value)
             elif op == "<=":
-                df = df[df[col_name] <= value]
+                mask = pc.less_equal(column, value)
+            else:
+                continue
 
-        return df
+            table = table.filter(mask)
+
+        return table
 
     def get_values(
         self,
         dimension: Dimension,
         filters: set[Filter] | None = None,
     ) -> SemanticResult:
-        df = self._apply_filters(self._data.copy(), filters)
+        table = self._apply_filters(self._data, filters)
         col_name = DIMENSION_COLUMNS[dimension.id]
-        result = DataFrame(df[col_name].unique(), columns=[dimension.name])
+        unique_values = pc.unique(table.column(col_name))
+        result = pa.table({dimension.name: unique_values})
 
         return SemanticResult(
             requests=[SemanticRequest(REQUEST_TYPE, f"SELECT DISTINCT {col_name}")],
@@ -156,66 +163,74 @@ class PandasSemanticView(SemanticView):
         group_limit: GroupLimit | None = None,
     ) -> SemanticResult:
         if not metrics and not dimensions:
-            return SemanticResult(requests=[], results=DataFrame())
+            return SemanticResult(requests=[], results=pa.table({}))
 
-        df = self._apply_filters(self._data.copy(), filters)
+        table = self._apply_filters(self._data, filters)
 
         if group_limit and dimensions:
-            df = self._apply_group_limit(df, group_limit)
+            table = self._apply_group_limit(table, group_limit)
 
         if dimensions and metrics:
             dim_cols = [DIMENSION_COLUMNS[d.id] for d in dimensions]
-            agg_dict = {}
+            aggregations = []
             for metric in metrics:
                 source_col, agg_func = METRIC_DEFINITIONS[metric.id]
-                agg_dict[source_col] = agg_func
-            result = df.groupby(dim_cols, as_index=False).agg(agg_dict)
-            # Rename columns: source columns -> metric/dimension names
+                aggregations.append((source_col, agg_func))
+            result = table.group_by(dim_cols).aggregate(aggregations)
+            # Rename columns: PyArrow group_by produces "<col>_<func>" names
             rename_map = {}
             for metric in metrics:
-                source_col, _ = METRIC_DEFINITIONS[metric.id]
-                rename_map[source_col] = metric.name
+                source_col, agg_func = METRIC_DEFINITIONS[metric.id]
+                rename_map[f"{source_col}_{agg_func}"] = metric.name
             for dim in dimensions:
                 col = DIMENSION_COLUMNS[dim.id]
                 if col != dim.name:
                     rename_map[col] = dim.name
-            result.rename(columns=rename_map, inplace=True)
+            result = _rename_columns(result, rename_map)
         elif dimensions:
             dim_cols = [DIMENSION_COLUMNS[d.id] for d in dimensions]
-            result = df[dim_cols].drop_duplicates()
+            result = table.select(dim_cols)
+            result = _unique_rows(result)
             rename_map = {
                 DIMENSION_COLUMNS[d.id]: d.name
                 for d in dimensions
                 if DIMENSION_COLUMNS[d.id] != d.name
             }
             if rename_map:
-                result.rename(columns=rename_map, inplace=True)
+                result = _rename_columns(result, rename_map)
         else:
-            # Only metrics, aggregate entire DataFrame
-            agg_results = {}
+            # Only metrics, aggregate entire table
+            columns = {}
             for metric in metrics:
                 source_col, agg_func = METRIC_DEFINITIONS[metric.id]
-                agg_results[metric.name] = [getattr(df[source_col], agg_func)()]
-            result = DataFrame(agg_results)
+                column = table.column(source_col)
+                if agg_func == "sum":
+                    columns[metric.name] = [pc.sum(column).as_py()]
+                elif agg_func == "mean":
+                    columns[metric.name] = [pc.mean(column).as_py()]
+                elif agg_func == "min":
+                    columns[metric.name] = [pc.min(column).as_py()]
+                elif agg_func == "max":
+                    columns[metric.name] = [pc.max(column).as_py()]
+                elif agg_func == "count":
+                    columns[metric.name] = [pc.count(column).as_py()]
+            result = pa.table(columns)
 
         # Apply ordering
         if order:
-            sort_cols = []
-            ascending = []
+            sort_keys = []
             for element, direction in order:
                 if isinstance(element, (Dimension, Metric)):
-                    sort_cols.append(element.name)
-                    ascending.append(direction == OrderDirection.ASC)
-            if sort_cols:
-                result = result.sort_values(sort_cols, ascending=ascending)
+                    sort_order = "ascending" if direction == OrderDirection.ASC else "descending"
+                    sort_keys.append((element.name, sort_order))
+            if sort_keys:
+                result = result.sort_by(sort_keys)
 
         # Apply offset and limit
-        if offset:
-            result = result.iloc[offset:]
-        if limit is not None:
-            result = result.iloc[:limit]
-
-        result = result.reset_index(drop=True)
+        if offset or limit is not None:
+            start = offset or 0
+            length = limit if limit is not None else result.num_rows - start
+            result = result.slice(start, length)
 
         description = self._describe_query(
             metrics,
@@ -244,7 +259,7 @@ class PandasSemanticView(SemanticView):
         if not metrics and not dimensions:
             return SemanticResult(
                 requests=[],
-                results=DataFrame([[0]], columns=["COUNT"]),
+                results=pa.table({"COUNT": [0]}),
             )
 
         result = self.get_dataframe(
@@ -256,39 +271,46 @@ class PandasSemanticView(SemanticView):
             offset,
             group_limit=group_limit,
         )
-        count = len(result.results)
+        count = result.results.num_rows
 
         return SemanticResult(
             requests=result.requests,
-            results=count,
+            results=pa.table({"COUNT": [count]}),
         )
 
     def _apply_group_limit(
         self,
-        df: DataFrame,
+        table: pa.Table,
         group_limit: GroupLimit,
-    ) -> DataFrame:
-        """Filter the DataFrame to only include the top N groups."""
+    ) -> pa.Table:
+        """Filter the table to only include the top N groups."""
         limited_dim_cols = [DIMENSION_COLUMNS[d.id] for d in group_limit.dimensions]
 
         if group_limit.filters is not None:
-            filter_df = self._apply_filters(self._data.copy(), set(group_limit.filters))
+            filter_table = self._apply_filters(self._data, set(group_limit.filters))
         else:
-            filter_df = df
+            filter_table = table
 
         ascending = group_limit.direction == OrderDirection.ASC
+        sort_order = "ascending" if ascending else "descending"
+
         if group_limit.metric is not None:
             source_col, agg_func = METRIC_DEFINITIONS[group_limit.metric.id]
-            group_agg = filter_df.groupby(limited_dim_cols, as_index=False).agg(
-                {source_col: agg_func}
+            group_agg = filter_table.group_by(limited_dim_cols).aggregate(
+                [(source_col, agg_func)]
             )
-            group_agg = group_agg.sort_values(source_col, ascending=ascending)
+            agg_col_name = f"{source_col}_{agg_func}"
+            group_agg = group_agg.sort_by([(agg_col_name, sort_order)])
         else:
-            group_agg = filter_df[limited_dim_cols].drop_duplicates()
-            group_agg = group_agg.sort_values(limited_dim_cols[0], ascending=ascending)
+            group_agg = _unique_rows(filter_table.select(limited_dim_cols))
+            group_agg = group_agg.sort_by([(limited_dim_cols[0], sort_order)])
 
-        top_groups = group_agg.head(group_limit.top)[limited_dim_cols]
-        return df.merge(top_groups, on=limited_dim_cols, how="inner")
+        top_groups = group_agg.slice(0, group_limit.top).select(limited_dim_cols)
+
+        # Semi-join: keep only rows in table whose dimension values are in top_groups
+        # Use a right-join on the dimension columns then select original columns
+        keys = limited_dim_cols[0] if len(limited_dim_cols) == 1 else limited_dim_cols
+        return table.join(top_groups, keys=keys, join_type="inner")
 
     def _describe_query(
         self,
@@ -320,3 +342,15 @@ class PandasSemanticView(SemanticView):
         return " ".join(parts)
 
     __repr__ = uid
+
+
+def _rename_columns(table: pa.Table, rename_map: dict[str, str]) -> pa.Table:
+    """Rename columns in a PyArrow table."""
+    new_names = [rename_map.get(name, name) for name in table.column_names]
+    return table.rename_columns(new_names)
+
+
+def _unique_rows(table: pa.Table) -> pa.Table:
+    """Return a table with duplicate rows removed."""
+    # Group by all columns with no aggregation to get distinct rows
+    return table.group_by(table.column_names).aggregate([])

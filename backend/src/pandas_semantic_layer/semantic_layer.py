@@ -12,6 +12,7 @@ class PandasSemanticLayer(SemanticLayer[PandasConfiguration, PandasSemanticView]
     id = "pandas"
     name = "Pandas Semantic Layer"
     description = "In-memory semantic layer backed by a Pandas DataFrame."
+    configuration_class = PandasConfiguration
 
     @classmethod
     def from_configuration(

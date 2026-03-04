@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import date
 
-import pandas as pd
+import pyarrow as pa
 
-SALES_DATA = pd.DataFrame(
+SALES_DATA = pa.table(
     {
         "product_category": [
             "Electronics",
@@ -46,28 +46,26 @@ SALES_DATA = pd.DataFrame(
             "East",
             "North",
         ],
-        "sale_date": pd.to_datetime(
-            [
-                date(2024, 1, 15),
-                date(2024, 1, 20),
-                date(2024, 2, 10),
-                date(2024, 2, 28),
-                date(2024, 1, 5),
-                date(2024, 1, 18),
-                date(2024, 2, 14),
-                date(2024, 3, 1),
-                date(2024, 1, 10),
-                date(2024, 2, 5),
-                date(2024, 2, 20),
-                date(2024, 3, 15),
-                date(2024, 3, 10),
-                date(2024, 3, 20),
-                date(2024, 3, 25),
-                date(2024, 4, 1),
-                date(2024, 4, 10),
-                date(2024, 4, 15),
-            ]
-        ),
+        "sale_date": [
+            date(2024, 1, 15),
+            date(2024, 1, 20),
+            date(2024, 2, 10),
+            date(2024, 2, 28),
+            date(2024, 1, 5),
+            date(2024, 1, 18),
+            date(2024, 2, 14),
+            date(2024, 3, 1),
+            date(2024, 1, 10),
+            date(2024, 2, 5),
+            date(2024, 2, 20),
+            date(2024, 3, 15),
+            date(2024, 3, 10),
+            date(2024, 3, 20),
+            date(2024, 3, 25),
+            date(2024, 4, 1),
+            date(2024, 4, 10),
+            date(2024, 4, 15),
+        ],
         "revenue": [
             1200.50,
             850.00,
@@ -132,6 +130,7 @@ SALES_DATA = pd.DataFrame(
 )
 
 # Metric definitions: metric_id -> (source_column, aggregation_function)
+# Aggregation function names follow PyArrow's group_by convention.
 METRIC_DEFINITIONS: dict[str, tuple[str, str]] = {
     "sales.total_revenue": ("revenue", "sum"),
     "sales.total_units_sold": ("units_sold", "sum"),
