@@ -1,23 +1,8 @@
 {
   "publisher": "betodealmeida",
-  "id": "betodealmeida.pandas-semantic-layer",
   "name": "pandas-semantic-layer",
   "displayName": "Pandas Semantic Layer",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "license": "Apache-2.0",
-  "frontend": {
-    "contributions": {
-      "commands": [],
-      "views": {},
-      "menus": {}
-    },
-    "moduleFederation": {
-      "exposes": ["./index"]
-    }
-  },
-  "backend": {
-    "entryPoints": ["pandas_semantic_layer.entrypoint"],
-    "files": ["backend/src/pandas_semantic_layer/**/*.py"]
-  },
   "permissions": []
 }

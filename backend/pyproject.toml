@@ -1,4 +1,11 @@
 [project]
-name = "pandas_semantic_layer"
-version = "0.1.5"
-license = { file="../LICENSE" }
+name = "betodealmeida-pandas_semantic_layer"
+version = "0.2.0"
+license = "Apache-2.0"
+
+[tool.apache_superset_extensions.build]
+# Files to include in the extension build/bundle
+include = [
+    "src/betodealmeida/pandas_semantic_layer/**/*.py",
+]
+exclude = []
