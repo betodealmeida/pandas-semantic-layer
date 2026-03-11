@@ -1,0 +1,28 @@
+{
+  "id": "betodealmeida.pandas-semantic-layer",
+  "name": "pandas-semantic-layer",
+  "version": "0.1.5",
+  "dependencies": [],
+  "permissions": [],
+  "frontend": {
+    "contributions": {
+      "commands": [],
+      "views": {},
+      "menus": {}
+    },
+    "moduleFederation": {
+      "exposes": [
+        "./index"
+      ],
+      "filename": "remoteEntry.js",
+      "shared": {},
+      "remotes": {}
+    },
+    "remoteEntry": "remoteEntry.4a5911c300109928beac.js"
+  },
+  "backend": {
+    "entryPoints": [
+      "pandas_semantic_layer.entrypoint"
+    ]
+  }
+}
