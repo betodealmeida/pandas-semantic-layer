@@ -34,7 +34,7 @@ jobs:
         run: npm ci
 
       - name: Install superset-extensions CLI
-        run: pip install apache-superset-extensions-cli==0.0.1rc2 apache-superset-core==0.0.1rc3
+        run: pip install -U apache-superset-extensions-cli apache-superset-core
 
       - name: Bundle extension
         run: superset-extensions bundle
