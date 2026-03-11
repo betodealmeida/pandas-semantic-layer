@@ -20,7 +20,7 @@ from superset_core.semantic_layers.types import (
     SemanticResult,
 )
 
-from pandas_semantic_layer.data import (
+from .data import (
     DIMENSION_COLUMNS,
     METRIC_DEFINITIONS,
     SALES_DATA,
@@ -84,6 +84,20 @@ class PandasSemanticView(SemanticView):
             for metric_id, (_, __) in METRIC_DEFINITIONS.items()
             for metric_name in [metric_id.split(".")[-1]]
         }
+
+    def get_compatible_metrics(
+        self,
+        selected_metrics: set[Metric],
+        selected_dimensions: set[Dimension],
+    ) -> set[Metric]:
+        return self.metrics
+
+    def get_compatible_dimensions(
+        self,
+        selected_metrics: set[Metric],
+        selected_dimensions: set[Dimension],
+    ) -> set[Dimension]:
+        return self.dimensions
 
     def _apply_filters(
         self,

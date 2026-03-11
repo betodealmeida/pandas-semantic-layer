@@ -5,8 +5,8 @@ from typing import Any
 from superset_core.semantic_layers.decorators import semantic_layer
 from superset_core.semantic_layers.layer import SemanticLayer
 
-from pandas_semantic_layer.schemas import PandasConfiguration
-from pandas_semantic_layer.view import PandasSemanticView
+from .schemas import PandasConfiguration
+from .view import PandasSemanticView
 
 
 @semantic_layer(
