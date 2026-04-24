@@ -1,6 +1,6 @@
 {
   "name": "pandas_semantic_layer",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "main": "dist/main.js",
   "types": "dist/publicAPI.d.ts",
   "scripts": {
@@ -11,7 +11,7 @@
   "keywords": [],
   "private": true,
   "author": "",
-  "license": "All Rights Reserved",
+  "license": "Apache-2.0",
   "description": "",
   "peerDependencies": {
     "@apache-superset/core": "0.1.0-rc2",

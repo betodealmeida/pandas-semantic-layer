@@ -1,6 +1,6 @@
 [project]
 name = "betodealmeida-pandas_semantic_layer"
-version = "0.2.0"
+version = "0.3.0"
 license = "Apache-2.0"
 
 [tool.apache_superset_extensions.build]
