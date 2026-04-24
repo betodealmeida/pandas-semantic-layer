@@ -1,13 +1,17 @@
 import React from "react";
-import { core } from "@apache-superset/core";
+import { views } from "@apache-superset/core";
 
-export const activate = (context: core.ExtensionContext) => {
-  context.disposables.push(
-    core.registerViewProvider("pandas_semantic_layer.example", () => <p>Pandas Semantic Layer</p>)
-  );
+const viewDisposable = views.registerView(
+  { id: "pandas.semantic-layer", name: "Pandas Semantic Layer" },
+  "sqllab.panels",
+  () => <p>Pandas Semantic Layer</p>
+);
+
+export const activate = () => {
   console.log("Pandas Semantic Layer extension activated");
 };
 
 export const deactivate = () => {
+  viewDisposable.dispose();
   console.log("Pandas Semantic Layer extension deactivated");
 };

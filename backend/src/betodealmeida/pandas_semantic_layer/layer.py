@@ -8,6 +8,8 @@ from superset_core.semantic_layers.layer import SemanticLayer
 from .schemas import PandasConfiguration
 from .view import PandasSemanticView
 
+VIEW_NAMES = frozenset({"sales", "marketing"})
+
 
 @semantic_layer(
     id="pandas",
@@ -48,13 +50,13 @@ class PandasSemanticLayer(SemanticLayer[PandasConfiguration, PandasSemanticView]
         self,
         runtime_configuration: dict[str, Any],
     ) -> set[PandasSemanticView]:
-        return {PandasSemanticView("sales")}
+        return {PandasSemanticView(name) for name in VIEW_NAMES}
 
     def get_semantic_view(
         self,
         name: str,
         additional_configuration: dict[str, Any],
     ) -> PandasSemanticView:
-        if name != "sales":
+        if name not in VIEW_NAMES:
             raise ValueError(f'Semantic view "{name}" does not exist.')
-        return PandasSemanticView("sales")
+        return PandasSemanticView(name)
