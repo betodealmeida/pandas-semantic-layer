@@ -21,9 +21,14 @@ from superset_core.semantic_layers.types import (
 )
 
 from .data import (
+    DIMENSION_TYPES,
     DIMENSION_COLUMNS,
+    METRIC_COMPATIBILITY,
     METRIC_DEFINITIONS,
+    METRIC_DIMENSION_COMPATIBILITY,
+    METRIC_METADATA,
     SALES_DATA,
+    SEMANTIC_VIEW_DEFINITIONS,
 )
 
 REQUEST_TYPE = "pandas"
@@ -37,52 +42,47 @@ class PandasSemanticView(SemanticView):
     )
 
     def __init__(self, name: str):
+        if name not in SEMANTIC_VIEW_DEFINITIONS:
+            raise ValueError(f'Semantic view "{name}" is not defined.')
         self.name = name
         self._data = SALES_DATA
+        view_definition = SEMANTIC_VIEW_DEFINITIONS[name]
+        self._metric_ids = set(view_definition["metrics"])
+        self._dimension_ids = set(view_definition["dimensions"])
         self.dimensions = self.get_dimensions()
         self.metrics = self.get_metrics()
+        self._metrics_by_id = {metric.id: metric for metric in self.metrics}
+        self._dimensions_by_id = {
+            dimension.id: dimension for dimension in self.dimensions
+        }
 
     def uid(self) -> str:
         return f"pandas.{self.name}"
 
     def get_dimensions(self) -> set[Dimension]:
-        type_map = {
-            "product_category": pa.utf8(),
-            "region": pa.utf8(),
-            "sale_date": pa.date32(),
-        }
         return {
             Dimension(
                 dim_id,
                 col_name,
-                type_map[col_name],
+                DIMENSION_TYPES[dim_id],
                 f"The {col_name.replace('_', ' ')} dimension.",
                 col_name,
             )
             for dim_id, col_name in DIMENSION_COLUMNS.items()
+            if dim_id in self._dimension_ids
         }
 
     def get_metrics(self) -> set[Metric]:
-        type_map = {
-            "total_revenue": pa.decimal128(38, 10),
-            "total_units_sold": pa.int64(),
-            "average_price": pa.decimal128(38, 10),
-        }
-        agg_labels = {
-            "total_revenue": "SUM(revenue)",
-            "total_units_sold": "SUM(units_sold)",
-            "average_price": "AVG(price)",
-        }
         return {
             Metric(
                 metric_id,
-                metric_name,
-                type_map[metric_name],
-                agg_labels[metric_name],
-                f"The {metric_name.replace('_', ' ')} metric.",
+                str(metadata["name"]),
+                metadata["type"],
+                str(metadata["definition"]),
+                str(metadata["description"]),
             )
-            for metric_id, (_, __) in METRIC_DEFINITIONS.items()
-            for metric_name in [metric_id.split(".")[-1]]
+            for metric_id in self._metric_ids
+            for metadata in [METRIC_METADATA[metric_id]]
         }
 
     def get_compatible_metrics(
@@ -90,14 +90,57 @@ class PandasSemanticView(SemanticView):
         selected_metrics: set[Metric],
         selected_dimensions: set[Dimension],
     ) -> set[Metric]:
-        return self.metrics
+        selected_metric_ids = {metric.id for metric in selected_metrics}
+        selected_dimension_ids = {dimension.id for dimension in selected_dimensions}
+
+        compatible_metric_ids = set(self._metric_ids)
+
+        if selected_metric_ids:
+            compatible_metric_ids &= set.intersection(
+                *[
+                    METRIC_COMPATIBILITY.get(metric_id, {metric_id})
+                    for metric_id in selected_metric_ids
+                ]
+            )
+
+        if selected_dimension_ids:
+            compatible_metric_ids = {
+                metric_id
+                for metric_id in compatible_metric_ids
+                if selected_dimension_ids.issubset(
+                    METRIC_DIMENSION_COMPATIBILITY.get(metric_id, set())
+                )
+            }
+
+        return {
+            self._metrics_by_id[metric_id]
+            for metric_id in compatible_metric_ids
+            if metric_id in self._metrics_by_id
+        }
 
     def get_compatible_dimensions(
         self,
         selected_metrics: set[Metric],
         selected_dimensions: set[Dimension],
     ) -> set[Dimension]:
-        return self.dimensions
+        selected_metric_ids = {metric.id for metric in selected_metrics}
+
+        if not selected_metric_ids:
+            compatible_dimension_ids = set(self._dimension_ids)
+        else:
+            compatible_dimension_ids = set.intersection(
+                *[
+                    METRIC_DIMENSION_COMPATIBILITY.get(metric_id, set())
+                    for metric_id in selected_metric_ids
+                ]
+            )
+            compatible_dimension_ids &= self._dimension_ids
+
+        return {
+            self._dimensions_by_id[dimension_id]
+            for dimension_id in compatible_dimension_ids
+            if dimension_id in self._dimensions_by_id
+        }
 
     def _apply_filters(
         self,
@@ -179,6 +222,8 @@ class PandasSemanticView(SemanticView):
         if group_limit and dimensions:
             table = self._apply_group_limit(table, group_limit)
 
+        effective_order = self._get_effective_order(dimensions, order)
+
         if dimensions and metrics:
             dim_cols = [DIMENSION_COLUMNS[d.id] for d in dimensions]
             aggregations = []
@@ -226,11 +271,13 @@ class PandasSemanticView(SemanticView):
             result = pa.table(columns)
 
         # Apply ordering
-        if order:
+        if effective_order:
             sort_keys = []
-            for element, direction in order:
+            for element, direction in effective_order:
                 if isinstance(element, (Dimension, Metric)):
-                    sort_order = "ascending" if direction == OrderDirection.ASC else "descending"
+                    sort_order = (
+                        "ascending" if direction == OrderDirection.ASC else "descending"
+                    )
                     sort_keys.append((element.name, sort_order))
             if sort_keys:
                 result = result.sort_by(sort_keys)
@@ -245,7 +292,7 @@ class PandasSemanticView(SemanticView):
             metrics,
             dimensions,
             filters,
-            order,
+            effective_order,
             limit,
             offset,
         )
@@ -331,6 +378,39 @@ class PandasSemanticView(SemanticView):
         if offset is not None:
             parts.append(f"OFFSET {offset}")
         return " ".join(parts)
+
+    def _get_temporal_dimension(
+        self,
+        dimensions: list[Dimension],
+    ) -> Dimension | None:
+        for dimension in dimensions:
+            if (
+                pa.types.is_date(dimension.type)
+                or pa.types.is_timestamp(dimension.type)
+                or pa.types.is_time(dimension.type)
+            ):
+                return dimension
+        return None
+
+    def _get_effective_order(
+        self,
+        dimensions: list[Dimension],
+        order: list[OrderTuple] | None,
+    ) -> list[OrderTuple] | None:
+        temporal_dimension = self._get_temporal_dimension(dimensions)
+        if not temporal_dimension:
+            return order
+
+        if order:
+            for element, _ in order:
+                if (
+                    isinstance(element, Dimension)
+                    and element.id == temporal_dimension.id
+                ):
+                    return order
+            return [(temporal_dimension, OrderDirection.ASC)] + list(order)
+
+        return [(temporal_dimension, OrderDirection.ASC)]
 
     __repr__ = uid
 
